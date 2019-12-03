@@ -1,0 +1,13 @@
+Package: TrenaProjectAD-PRN
+Title: TrenaProject AD Protein Regulatory Networks
+Date: 2019-12-03
+Version: 1.0.0
+Author: Cory Funk, Paul Shannon
+Maintainer: Cory Funk <cfunk@systemsbiology.org>
+Description: Construct Gene Regulatory Networks in AD using Proteomics
+Imports: methods
+Depends: R (>= 3.5.0), TrenaProjectHG38 (>= 0.99.40), trenaSGM (>= 0.99.80)
+License: Apache 2.0
+Encoding: UTF-8
+LazyData: true
+RoxygenNote: 7.0.1
