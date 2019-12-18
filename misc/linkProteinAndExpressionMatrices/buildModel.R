@@ -15,24 +15,27 @@ if(!exists("tpAD")){
    mtx.rna <- getExpressionMatrix(tpAD, "rosmap.14235x632")
    }
 
+if(!exists("tbl.md"))
+   tbl.md <- read.table("ROSMAP_biospecimen_metadata.csv", sep=",", as.is=TRUE, header=TRUE, nrow=-1)
+
 #------------------------------------------------------------------------------------------------------------------------
-# if(!exists("tv")) {
-#    benchmark.full <- "~/github/trena/misc/saez-benchmark-paper/GarciaAlonso_Supplemental_Tables/database.csv"
-#    tbl.bm <-read.table(benchmark.full, sep=",", as.is=TRUE, header=TRUE, nrow=-1)
-#
-#    message(sprintf("--- creating instance of TrenaValidator"))
-#    tbl.benchmark <- get(load(system.file(package="TrenaValidator", "extdata", "tbl.A.RData")))
-#    tbl.benchmark$pubmed.count <- unlist(lapply(strsplit(tbl.benchmark$pubmedID_from_curated_resources, ","), length))
-#    #mtx <- get(load(system.file(package="TrenaValidator", "extdata", "mtx.gtex.lung.RData")))
-#    tv <- TrenaValidator(TF="TWIST1", "MMP2", tbl.benchmark);
-#    #setMatrix(tv, mtx)
-#    tp.hg38 <- TrenaProjectHG38.generic()
-#    }
+if(!exists("tv")) {
+   benchmark.full <- "~/github/trena/misc/saez-benchmark-paper/GarciaAlonso_Supplemental_Tables/database.csv"
+   tbl.bm <-read.table(benchmark.full, sep=",", as.is=TRUE, header=TRUE, nrow=-1)
+
+   message(sprintf("--- creating instance of TrenaValidator"))
+   tbl.benchmark <- get(load(system.file(package="TrenaValidator", "extdata", "tbl.A.RData")))
+   tbl.benchmark$pubmed.count <- unlist(lapply(strsplit(tbl.benchmark$pubmedID_from_curated_resources, ","), length))
+   #mtx <- get(load(system.file(package="TrenaValidator", "extdata", "mtx.gtex.lung.RData")))
+   tv <- TrenaValidator(TF="TWIST1", "MMP2", tbl.benchmark);
+   #setMatrix(tv, mtx)
+   tp.hg38 <- TrenaProjectHG38.generic()
+   }
 #------------------------------------------------------------------------------------------------------------------------
-# if(!exists("igv")) {
-#    igv <- igvR()
-#    setGenome(igv, "hg38")
-#   }
+if(!exists("igv")) {
+   igv <- igvR()
+   setGenome(igv, "hg38")
+  }
 #------------------------------------------------------------------------------------------------------------------------
 # motifs <- query(MotifDb, "hsapiens", c("jaspar2018", "hocomoco"))
 # meme.file <- "human.hocomoco.meme"
@@ -53,6 +56,77 @@ if(!exists("genes.regulators")){
 
 genes.other <- c("NFE2")
 genes.all <- sort(unique(c(genes.regulators, genes.erythroid, genes.other)))
+#------------------------------------------------------------------------------------------------------------------------
+mapID <- function(mrna.id)
+{
+   row <- match(mrna.id, tbl.md$specimenID)
+   printf("%s: %d", mrna.id, row)
+   #if(is.na(row)) browser()
+
+   personID <- tbl.md[row, "individualID"]
+   result <- subset(tbl, individualID==personID & notes == "proteomics (SRM)")$specimenID
+   if(length(result) == 0)
+      result <- NA
+
+   result
+
+} # mapID
+#------------------------------------------------------------------------------------------------------------------------
+test_mapID <- function()
+{
+   message(sprintf("--- test_mapID"))
+   mrna.id <- "01_120405"
+   protein.id <- mapID(mrna.id)
+
+} # test_mapID
+#------------------------------------------------------------------------------------------------------------------------
+explore_mapID <- function()
+{
+   ncol(mtx.prot)
+   prot.ids <- (colnames(mtx.prot))
+   prot.hits <- unlist(lapply(prot.ids, function(id) grep(id, tbl.md$specimenID)))
+   length(prot.hits)
+   prot.personID <- tbl.md$individualID[prot.hits]
+   length(prot.personID)
+   tbl.protein.person.map <- data.frame(individualID=prot.personID, prot=prot.ids, stringsAsFactors=FALSE)
+   dim(tbl.protein.person.map)
+
+   tbl.protein.tmt <- subset(tbl.md, individualID %in% prot.personID & notes == "proteomics (TMT)")[, c("individualID", "specimenID", "notes")]
+   dim(tbl.protein.tmt)  # 400 3
+   prot.ids <- sub("ROSMAP.DLPFC.", "", tbl.protein.tmt$specimenID)
+   prot.ids <- sub("\\.R.*$", "", prot.ids)
+   tbl.protein.tmt$proteinID <- prot.ids
+
+   stopifnot(all(tbl.protein.tmt$proteinID %in% colnames(mtx.prot)))   # [1] TRUE
+
+   ncol(mtx.rna)  # 632
+   rna.ids <- colnames(mtx.rna)
+   rna.hits <- unlist(lapply(rna.ids, function(id) grep(id, tbl.md$specimenID)))
+   length(rna.hits)  # 632
+   rna.personID <- tbl.md$individualID[rna.hits]
+   length(rna.personID)   # 632
+   length(unique(rna.personID))  # 632
+   tbl.mrna.person.map <- data.frame(individualID=rna.personID, mrna=rna.ids)
+   dim(tbl.mrna.person.map)   # 632 2
+   stopifnot(all(tbl.mrna.person.map$mrna %in% colnames(mtx.rna)))   # TRUE
+
+   tbl.map <- merge(tbl.mrna.person.map, tbl.protein.tmt, by="individualID", all.x=TRUE)
+   dim(tbl.map)   # 632
+
+   tbl.map <- data.frame(individualID=personID, prot=prot.ids, stringsAsFactors=FALSE)
+   dim(subset(tbl.map, !is.na(proteinID)))  # 208
+   tbl.rna.prot.map <- subset(tbl.map, !is.na(proteinID))
+   dim(tbl.rna.prot.map)   # 208 x 5
+   save(tbl.rna.prot.map, file="tbl.rna.prot.map.RData")
+
+
+} # explore_mapID
+#------------------------------------------------------------------------------------------------------------------------
+build_mapID.table <- function()
+{
+  x <- lapply((colnames(mtx.rna)), mapID)
+
+} # build_mapID.table
 #------------------------------------------------------------------------------------------------------------------------
 getCorcesMatrix <- function()
 {
@@ -108,7 +182,12 @@ getRosmapProteinMatrix <- function()
 {
    file <- system.file(package="TrenaProjectADPRN", "extdata", "expression", "c2-8817x400.RData")
    mtx <- get(load(file))
+   class(mtx)
+   dim(mtx)
+   fivenum(mtx)
+   length(which(is.na(mtx)))  # 257182
    mtx[is.na(mtx)] <- 0
+   length(which(is.na(mtx)))  # 0
    invisible(mtx)
 
 } # getRosmapProteinMatrix
@@ -333,6 +412,9 @@ run <- function(targetGene, mtx, phast7, fimo, bioc, upstream, downstream, displ
       tbl.model <- buildModel(tv, 1.0)
       )
 
+   if(nrow(tbl.model) > 20)
+      tbl.model <- head(tbl.model, n=20)
+
    tbl.tfbs <- subset(tbl.tfbs, tf %in% tbl.model$gene)
    print(dim(tbl.model))
    print(tbl.model)
@@ -375,7 +457,7 @@ mef2c <- function(conservation=0.5, fimo=NA_real_, bioc=NA_integer_, upstream=25
   geneHancerTrack(targetGene)
   invisible(x)
 
-} # tal1
+} # mef2c
 #------------------------------------------------------------------------------------------------------------------------
 explore.znf263.tfbs <- function()
 {
@@ -456,6 +538,7 @@ my.mef2c <- function()
    tbl.regions <- with(tbl.geneInfo, data.frame(chrom=chrom, start=tss-5000, end=tss+5000, stringsAsFactors=FALSE))
    showGenomicRegion(igv, with(tbl.regions, sprintf("%s:%d-%d", chrom, start, end)))
    conservationTrack()
+   chrom.loc <- getGenomicRegion(igv)
    tbl.chip <- with(chrom.loc, getChipSeq(tp.hg38, chrom, start, end))
    tfs <- sort(unique(tbl.chip$tf))
    for(one.tf in tfs){
